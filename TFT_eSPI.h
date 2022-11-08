@@ -828,8 +828,9 @@ class TFT_eSPI : public Print { friend class TFT_eSprite; // Sprite class has ac
   uint32_t xclr_mask, xdir_mask; // Port set/clear and direction control masks
 
            // Lookup table for ESP32 parallel bus interface uses 1kbyte RAM,
-  uint32_t xset_mask[256]; // Makes Sprite rendering test 33% faster, for slower macro equivalent
+  //uint32_t xset_mask[256]; // Makes Sprite rendering test 33% faster, for slower macro equivalent
                            // see commented out #define set_mask(C) within TFT_eSPI_ESP32.h
+  dedic_gpio_bundle_handle_t bundleA = NULL;
            #endif
 
   //uint32_t lastColor = 0xFFFF; // Last colour - used to minimise bit shifting overhead

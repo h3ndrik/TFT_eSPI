@@ -17,6 +17,7 @@
 // Include processor specific header
 #include "soc/spi_reg.h"
 #include "driver/spi_master.h"
+#include "driver/dedic_gpio.h"
 
 #if !defined(CONFIG_IDF_TARGET_ESP32S3) && !defined(CONFIG_IDF_TARGET_ESP32S2) && !defined(CONFIG_IDF_TARGET_ESP32)
   #define CONFIG_IDF_TARGET_ESP32
@@ -354,49 +355,60 @@ SPI3_HOST = 2
   // Create a bit set lookup table for data bus - wastes 1kbyte of RAM but speeds things up dramatically
   // can then use e.g. GPIO.out_w1ts = set_mask(0xFF); to set data bus to 0xFF
   #define PARALLEL_INIT_TFT_DATA_BUS               \
-  for (int32_t c = 0; c<256; c++)                  \
-  {                                                \
-    xset_mask[c] = 0;                              \
-    if ( c & 0x01 ) xset_mask[c] |= (1 << TFT_D0); \
-    if ( c & 0x02 ) xset_mask[c] |= (1 << TFT_D1); \
-    if ( c & 0x04 ) xset_mask[c] |= (1 << TFT_D2); \
-    if ( c & 0x08 ) xset_mask[c] |= (1 << TFT_D3); \
-    if ( c & 0x10 ) xset_mask[c] |= (1 << TFT_D4); \
-    if ( c & 0x20 ) xset_mask[c] |= (1 << TFT_D5); \
-    if ( c & 0x40 ) xset_mask[c] |= (1 << TFT_D6); \
-    if ( c & 0x80 ) xset_mask[c] |= (1 << TFT_D7); \
-  }                                                \
+  const int bundleA_gpios[] = {TFT_D0, TFT_D1, TFT_D2, TFT_D3, TFT_D4, TFT_D5, TFT_D6, TFT_D7};               \
+  gpio_config_t io_conf = {                             \
+    .mode = GPIO_MODE_INPUT_OUTPUT,                            \
+  };                                                      \
+  for (int i = 0; i < sizeof(bundleA_gpios) / sizeof(bundleA_gpios[0]); i++) {                            \
+    io_conf.pin_bit_mask = 1ULL << bundleA_gpios[i];                            \
+    gpio_config(&io_conf);                            \
+  }                            \
+  bundleA = NULL;              \
+  dedic_gpio_bundle_config_t bundleA_config = {                            \
+    .gpio_array = bundleA_gpios,                            \
+    .array_size = sizeof(bundleA_gpios) / sizeof(bundleA_gpios[0]),                            \
+    .flags = {                            \
+      .in_en = 1,                            \
+      .out_en = 1,                            \
+    },                            \
+  };                            \
+  dedic_gpio_new_bundle(&bundleA_config, &bundleA);                            \
+
 
   // Mask for the 8 data bits to set pin directions
-  #define GPIO_DIR_MASK ((1 << TFT_D0) | (1 << TFT_D1) | (1 << TFT_D2) | (1 << TFT_D3) | (1 << TFT_D4) | (1 << TFT_D5) | (1 << TFT_D6) | (1 << TFT_D7))
+  //#define GPIO_DIR_MASK ((1 << (TFT_D0 - 32)) | (1 << (TFT_D1 - 32)) | (1 << (TFT_D2 - 32)) | (1 << (TFT_D3 - 32)) | (1 << (TFT_D4 - 32)) | (1 << (TFT_D5 - 32)) | (1 << (TFT_D6 - 32)) | (1 << (TFT_D7 - 32)))
 
   #if (TFT_WR >= 32)
-    // Data bits and the write line are cleared sequentially
-    #define GPIO_OUT_CLR_MASK (GPIO_DIR_MASK); WR_L
-  #elif (TFT_WR >= 0)
     // Data bits and the write line are cleared to 0 in one step (1.25x faster)
-    #define GPIO_OUT_CLR_MASK (GPIO_DIR_MASK | (1 << TFT_WR))
+    //#define GPIO_OUT_CLR_MASK (GPIO_DIR_MASK | (1 << (TFT_WR-32)))
+  #elif (TFT_WR >= 0)
+    // Data bits and the write line are cleared sequentially
+    //#define GPIO_OUT_CLR_MASK (GPIO_DIR_MASK); WR_L
   #else
-    #define GPIO_OUT_CLR_MASK
+    //#define GPIO_OUT_CLR_MASK
   #endif
 
   // A lookup table is used to set the different bit patterns, this uses 1kByte of RAM
-  #define set_mask(C) xset_mask[C] // 63fps Sprite rendering test 33% faster, graphicstest only 1.8% faster than shifting in real time
+  //#define set_mask(C) xset_mask[C] // 63fps Sprite rendering test 33% faster, graphicstest only 1.8% faster than shifting in real time
 
   // Real-time shifting alternative to above to save 1KByte RAM, 47 fps Sprite rendering test
-  /*#define set_mask(C) (((C)&0x80)>>7)<<TFT_D7 | (((C)&0x40)>>6)<<TFT_D6 | (((C)&0x20)>>5)<<TFT_D5 | (((C)&0x10)>>4)<<TFT_D4 | \
-                        (((C)&0x08)>>3)<<TFT_D3 | (((C)&0x04)>>2)<<TFT_D2 | (((C)&0x02)>>1)<<TFT_D1 | (((C)&0x01)>>0)<<TFT_D0
+  /*#define set_mask(C) (((C)&0x80)>>7)<<(TFT_D7 - 32) | (((C)&0x40)>>6)<<(TFT_D6 - 32) | (((C)&0x20)>>5)<<(TFT_D5 - 32) | (((C)&0x10)>>4)<<(TFT_D4 - 32) | \
+                        (((C)&0x08)>>3)<<(TFT_D3 - 32) | (((C)&0x04)>>2)<<(TFT_D2 - 32) | (((C)&0x02)>>1)<<(TFT_D1 - 32) | (((C)&0x01)>>0)<<(TFT_D0 - 32)
   //*/
 
   // Write 8 bits to TFT
-  #define tft_Write_8(C)  GPIO.out_w1tc = GPIO_OUT_CLR_MASK; GPIO.out_w1ts = set_mask((uint8_t)(C)); WR_H
+  //#define tft_Write_8(C)  GPIO.out1_w1tc.val = GPIO_OUT_CLR_MASK; GPIO.out1_w1ts.val = set_mask((uint8_t)(C)); WR_H
+  #define tft_Write_8(C)  WR_L; dedic_gpio_bundle_write(bundleA, 0xFF, C); WR_H
 
   #if defined (SSD1963_DRIVER)
 
     // Write 18 bit color to TFT
-    #define tft_Write_16(C) GPIO.out_w1tc = GPIO_OUT_CLR_MASK; GPIO.out_w1ts = set_mask((uint8_t) (((C) & 0xF800)>> 8)); WR_H; \
-                            GPIO.out_w1tc = GPIO_OUT_CLR_MASK; GPIO.out_w1ts = set_mask((uint8_t) (((C) & 0x07E0)>> 3)); WR_H; \
-                            GPIO.out_w1tc = GPIO_OUT_CLR_MASK; GPIO.out_w1ts = set_mask((uint8_t) (((C) & 0x001F)<< 3)); WR_H
+//    #define tft_Write_16(C) GPIO.out1_w1tc.val = GPIO_OUT_CLR_MASK; GPIO.out1_w1ts.val = set_mask((uint8_t) (((C) & 0xF800)>> 8)); WR_H; \
+//                            GPIO.out1_w1tc.val = GPIO_OUT_CLR_MASK; GPIO.out1_w1ts.val = set_mask((uint8_t) (((C) & 0x07E0)>> 3)); WR_H; \
+//                            GPIO.out1_w1tc.val = GPIO_OUT_CLR_MASK; GPIO.out1_w1ts.val = set_mask((uint8_t) (((C) & 0x001F)<< 3)); WR_H
+    #define tft_Write_16(C) dedic_gpio_bundle_write(bundleA, 0xFF, 0); WR_L; dedic_gpio_bundle_write(bundleA, 0xFF, (((C) & 0xF800)>> 8)); WR_H; \
+                            dedic_gpio_bundle_write(bundleA, 0xFF, 0); WR_L; dedic_gpio_bundle_write(bundleA, 0xFF, (((C) & 0x07E0)>> 3)); WR_H; \
+                            dedic_gpio_bundle_write(bundleA, 0xFF, 0); WR_L; dedic_gpio_bundle_write(bundleA, 0xFF, (((C) & 0x001F)<< 3)); WR_H;
 
     // 18 bit color write with swapped bytes
     #define tft_Write_16S(C) Cswap = ((C) >>8 | (C) << 8); tft_Write_16(Cswap)
@@ -405,37 +417,56 @@ SPI3_HOST = 2
 
     #ifdef PSEUDO_16_BIT
       // One write strobe for both bytes
-      #define tft_Write_16(C)  GPIO.out_w1tc = GPIO_OUT_CLR_MASK; GPIO.out_w1ts = set_mask((uint8_t) ((C) >> 0)); WR_H
-      #define tft_Write_16S(C) GPIO.out_w1tc = GPIO_OUT_CLR_MASK; GPIO.out_w1ts = set_mask((uint8_t) ((C) >> 8)); WR_H
+      //#define tft_Write_16(C)  GPIO.out1_w1tc.val = GPIO_OUT_CLR_MASK; GPIO.out1_w1ts.val = set_mask((uint8_t) ((C) >> 0)); WR_H
+      //#define tft_Write_16S(C) GPIO.out1_w1tc.val = GPIO_OUT_CLR_MASK; GPIO.out1_w1ts.val = set_mask((uint8_t) ((C) >> 8)); WR_H
+      #define tft_Write_16(C)  dedic_gpio_bundle_write(bundleA, 0xFF, 0); WR_L; dedic_gpio_bundle_write(bundleA, 0xFF, ((C) >> 0)); WR_H;
+      #define tft_Write_16S(C) dedic_gpio_bundle_write(bundleA, 0xFF, 0); WR_L; dedic_gpio_bundle_write(bundleA, 0xFF, ((C) >> 8)); WR_H;
     #else
       // Write 16 bits to TFT
-      #define tft_Write_16(C) GPIO.out_w1tc = GPIO_OUT_CLR_MASK; GPIO.out_w1ts = set_mask((uint8_t) ((C) >> 8)); WR_H; \
-                              GPIO.out_w1tc = GPIO_OUT_CLR_MASK; GPIO.out_w1ts = set_mask((uint8_t) ((C) >> 0)); WR_H
+      //#define tft_Write_16(C) GPIO.out1_w1tc.val = GPIO_OUT_CLR_MASK; GPIO.out1_w1ts.val = set_mask((uint8_t) ((C) >> 8)); WR_H; \
+      //                        GPIO.out1_w1tc.val = GPIO_OUT_CLR_MASK; GPIO.out1_w1ts.val = set_mask((uint8_t) ((C) >> 0)); WR_H
+      #define tft_Write_16(C) dedic_gpio_bundle_write(bundleA, 0xFF, 0); WR_L; dedic_gpio_bundle_write(bundleA, 0xFF, ((C) >> 8)); WR_H; \
+                              dedic_gpio_bundle_write(bundleA, 0xFF, 0); WR_L; dedic_gpio_bundle_write(bundleA, 0xFF, ((C) >> 0)); WR_H;
 
       // 16 bit write with swapped bytes
-      #define tft_Write_16S(C) GPIO.out_w1tc = GPIO_OUT_CLR_MASK; GPIO.out_w1ts = set_mask((uint8_t) ((C) >> 0)); WR_H; \
-                               GPIO.out_w1tc = GPIO_OUT_CLR_MASK; GPIO.out_w1ts = set_mask((uint8_t) ((C) >> 8)); WR_H
+      //#define tft_Write_16S(C) GPIO.out1_w1tc.val = GPIO_OUT_CLR_MASK; GPIO.out1_w1ts.val = set_mask((uint8_t) ((C) >> 0)); WR_H; \
+      //                         GPIO.out1_w1tc.val = GPIO_OUT_CLR_MASK; GPIO.out1_w1ts.val = set_mask((uint8_t) ((C) >> 8)); WR_H
+      #define tft_Write_16S(C) dedic_gpio_bundle_write(bundleA, 0xFF, 0); WR_L; dedic_gpio_bundle_write(bundleA, 0xFF, ((C) >> 0)); WR_H; \
+                               dedic_gpio_bundle_write(bundleA, 0xFF, 0); WR_L; dedic_gpio_bundle_write(bundleA, 0xFF, ((C) >> 8)); WR_H;
     #endif
 
   #endif
 
   // Write 32 bits to TFT
-  #define tft_Write_32(C) GPIO.out_w1tc = GPIO_OUT_CLR_MASK; GPIO.out_w1ts = set_mask((uint8_t) ((C) >> 24)); WR_H; \
-                          GPIO.out_w1tc = GPIO_OUT_CLR_MASK; GPIO.out_w1ts = set_mask((uint8_t) ((C) >> 16)); WR_H; \
-                          GPIO.out_w1tc = GPIO_OUT_CLR_MASK; GPIO.out_w1ts = set_mask((uint8_t) ((C) >>  8)); WR_H; \
-                          GPIO.out_w1tc = GPIO_OUT_CLR_MASK; GPIO.out_w1ts = set_mask((uint8_t) ((C) >>  0)); WR_H
+//  #define tft_Write_32(C) GPIO.out1_w1tc.val = GPIO_OUT_CLR_MASK; GPIO.out1_w1ts.val = set_mask((uint8_t) ((C) >> 24)); WR_H; \
+//                          GPIO.out1_w1tc.val = GPIO_OUT_CLR_MASK; GPIO.out1_w1ts.val = set_mask((uint8_t) ((C) >> 16)); WR_H; \
+//                          GPIO.out1_w1tc.val = GPIO_OUT_CLR_MASK; GPIO.out1_w1ts.val = set_mask((uint8_t) ((C) >>  8)); WR_H; \
+//                          GPIO.out1_w1tc.val = GPIO_OUT_CLR_MASK; GPIO.out1_w1ts.val = set_mask((uint8_t) ((C) >>  0)); WR_H
+  #define tft_Write_32(C) dedic_gpio_bundle_write(bundleA, 0xFF, 0); WR_L; dedic_gpio_bundle_write(bundleA, 0xFF, ((C) >> 24)); WR_H; \
+                          dedic_gpio_bundle_write(bundleA, 0xFF, 0); WR_L; dedic_gpio_bundle_write(bundleA, 0xFF, ((C) >> 16)); WR_H; \
+                          dedic_gpio_bundle_write(bundleA, 0xFF, 0); WR_L; dedic_gpio_bundle_write(bundleA, 0xFF, ((C) >>  8)); WR_H; \
+                          dedic_gpio_bundle_write(bundleA, 0xFF, 0); WR_L; dedic_gpio_bundle_write(bundleA, 0xFF, ((C) >>  0)); WR_H;
+
 
   // Write two concatenated 16 bit values to TFT
-  #define tft_Write_32C(C,D) GPIO.out_w1tc = GPIO_OUT_CLR_MASK; GPIO.out_w1ts = set_mask((uint8_t) ((C) >> 8)); WR_H; \
-                             GPIO.out_w1tc = GPIO_OUT_CLR_MASK; GPIO.out_w1ts = set_mask((uint8_t) ((C) >> 0)); WR_H; \
-                             GPIO.out_w1tc = GPIO_OUT_CLR_MASK; GPIO.out_w1ts = set_mask((uint8_t) ((D) >> 8)); WR_H; \
-                             GPIO.out_w1tc = GPIO_OUT_CLR_MASK; GPIO.out_w1ts = set_mask((uint8_t) ((D) >> 0)); WR_H
+//  #define tft_Write_32C(C,D) GPIO.out1_w1tc.val = GPIO_OUT_CLR_MASK; GPIO.out1_w1ts.val = set_mask((uint8_t) ((C) >> 8)); WR_H; \
+//                             GPIO.out1_w1tc.val = GPIO_OUT_CLR_MASK; GPIO.out1_w1ts.val = set_mask((uint8_t) ((C) >> 0)); WR_H; \
+//                             GPIO.out1_w1tc.val = GPIO_OUT_CLR_MASK; GPIO.out1_w1ts.val = set_mask((uint8_t) ((D) >> 8)); WR_H; \
+//                             GPIO.out1_w1tc.val = GPIO_OUT_CLR_MASK; GPIO.out1_w1ts.val = set_mask((uint8_t) ((D) >> 0)); WR_H
+  #define tft_Write_32C(C,D) dedic_gpio_bundle_write(bundleA, 0xFF, 0); WR_L; dedic_gpio_bundle_write(bundleA, 0xFF, ((C) >> 8)); WR_H; \
+                             dedic_gpio_bundle_write(bundleA, 0xFF, 0); WR_L; dedic_gpio_bundle_write(bundleA, 0xFF, ((C) >> 0)); WR_H; \
+                             dedic_gpio_bundle_write(bundleA, 0xFF, 0); WR_L; dedic_gpio_bundle_write(bundleA, 0xFF, ((D) >> 8)); WR_H; \
+                             dedic_gpio_bundle_write(bundleA, 0xFF, 0); WR_L; dedic_gpio_bundle_write(bundleA, 0xFF, ((D) >> 0)); WR_H;
 
   // Write 16 bit value twice to TFT - used by drawPixel()
-  #define tft_Write_32D(C) GPIO.out_w1tc = GPIO_OUT_CLR_MASK; GPIO.out_w1ts = set_mask((uint8_t) ((C) >> 8)); WR_H; \
-                           GPIO.out_w1tc = GPIO_OUT_CLR_MASK; GPIO.out_w1ts = set_mask((uint8_t) ((C) >> 0)); WR_H; \
-                           GPIO.out_w1tc = GPIO_OUT_CLR_MASK; GPIO.out_w1ts = set_mask((uint8_t) ((C) >> 8)); WR_H; \
-                           GPIO.out_w1tc = GPIO_OUT_CLR_MASK; GPIO.out_w1ts = set_mask((uint8_t) ((C) >> 0)); WR_H
+//  #define tft_Write_32D(C) GPIO.out1_w1tc.val = GPIO_OUT_CLR_MASK; GPIO.out1_w1ts.val = set_mask((uint8_t) ((C) >> 8)); WR_H; \
+//                           GPIO.out1_w1tc.val = GPIO_OUT_CLR_MASK; GPIO.out1_w1ts.val = set_mask((uint8_t) ((C) >> 0)); WR_H; \
+//                           GPIO.out1_w1tc.val = GPIO_OUT_CLR_MASK; GPIO.out1_w1ts.val = set_mask((uint8_t) ((C) >> 8)); WR_H; \
+//                           GPIO.out1_w1tc.val = GPIO_OUT_CLR_MASK; GPIO.out1_w1ts.val = set_mask((uint8_t) ((C) >> 0)); WR_H
+  #define tft_Write_32D(C) dedic_gpio_bundle_write(bundleA, 0xFF, 0); WR_L; dedic_gpio_bundle_write(bundleA, 0xFF, ((C) >> 8)); WR_H; \
+                           dedic_gpio_bundle_write(bundleA, 0xFF, 0); WR_L; dedic_gpio_bundle_write(bundleA, 0xFF, ((C) >> 0)); WR_H; \
+                           dedic_gpio_bundle_write(bundleA, 0xFF, 0); WR_L; dedic_gpio_bundle_write(bundleA, 0xFF, ((C) >> 8)); WR_H; \
+                           dedic_gpio_bundle_write(bundleA, 0xFF, 0); WR_L; dedic_gpio_bundle_write(bundleA, 0xFF, ((C) >> 0)); WR_H; \
 
    // Read pin
   #ifdef TFT_RD

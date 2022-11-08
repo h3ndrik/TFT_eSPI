@@ -571,14 +571,14 @@ void TFT_eSPI::initBus(void) {
 
   #if  !defined (ARDUINO_ARCH_RP2040)  && !defined (ARDUINO_ARCH_MBED)// PIO manages pins
     // Set TFT data bus lines to output
-    pinMode(TFT_D0, OUTPUT); digitalWrite(TFT_D0, HIGH);
-    pinMode(TFT_D1, OUTPUT); digitalWrite(TFT_D1, HIGH);
-    pinMode(TFT_D2, OUTPUT); digitalWrite(TFT_D2, HIGH);
-    pinMode(TFT_D3, OUTPUT); digitalWrite(TFT_D3, HIGH);
-    pinMode(TFT_D4, OUTPUT); digitalWrite(TFT_D4, HIGH);
-    pinMode(TFT_D5, OUTPUT); digitalWrite(TFT_D5, HIGH);
-    pinMode(TFT_D6, OUTPUT); digitalWrite(TFT_D6, HIGH);
-    pinMode(TFT_D7, OUTPUT); digitalWrite(TFT_D7, HIGH);
+    //pinMode(TFT_D0, OUTPUT); digitalWrite(TFT_D0, HIGH);
+    //pinMode(TFT_D1, OUTPUT); digitalWrite(TFT_D1, HIGH);
+    //pinMode(TFT_D2, OUTPUT); digitalWrite(TFT_D2, HIGH);
+    //pinMode(TFT_D3, OUTPUT); digitalWrite(TFT_D3, HIGH);
+    //pinMode(TFT_D4, OUTPUT); digitalWrite(TFT_D4, HIGH);
+    //pinMode(TFT_D5, OUTPUT); digitalWrite(TFT_D5, HIGH);
+    //pinMode(TFT_D6, OUTPUT); digitalWrite(TFT_D6, HIGH);
+    //pinMode(TFT_D7, OUTPUT); digitalWrite(TFT_D7, HIGH);
   #endif
 
   PARALLEL_INIT_TFT_DATA_BUS;
@@ -990,14 +990,14 @@ uint8_t TFT_eSPI::readcommand8(uint8_t cmd_function, uint8_t index)
 
   writecommand(cmd_function); // Sets DC and CS high
 
-  busDir(GPIO_DIR_MASK, INPUT);
+  busDir(0xff, INPUT);
 
   CS_L;
 
   // Read nth parameter (assumes caller discards 1st parameter or points index to 2nd)
   while(index--) reg = readByte();
 
-  busDir(GPIO_DIR_MASK, OUTPUT);
+  busDir(0xff, OUTPUT);
 
   CS_H;
 
@@ -1075,7 +1075,7 @@ uint16_t TFT_eSPI::readPixel(int32_t x0, int32_t y0)
   readAddrWindow(x0, y0, 1, 1);
 
   // Set masked pins D0- D7 to input
-  busDir(GPIO_DIR_MASK, INPUT);
+  busDir(0xff, INPUT);
 
   #if  !defined (SSD1963_DRIVER)
   // Dummy read to throw away don't care value
@@ -1093,7 +1093,7 @@ uint16_t TFT_eSPI::readPixel(int32_t x0, int32_t y0)
     if (!inTransaction) { CS_H; } // CS_H can be multi-statement
 
     // Set masked pins D0- D7 to output
-    busDir(GPIO_DIR_MASK, OUTPUT);
+    busDir(0xff, OUTPUT);
 
     return rgb;
 
@@ -1105,7 +1105,7 @@ uint16_t TFT_eSPI::readPixel(int32_t x0, int32_t y0)
     if (!inTransaction) { CS_H; } // CS_H can be multi-statement
 
     // Set masked pins D0- D7 to output
-    busDir(GPIO_DIR_MASK, OUTPUT);
+    busDir(0xff, OUTPUT);
 
     #ifdef ILI9486_DRIVER
       return  bgr;
@@ -1201,7 +1201,7 @@ void TFT_eSPI::readRect(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t *da
   data += dx + dy * w;
 
   // Set masked pins D0- D7 to input
-  busDir(GPIO_DIR_MASK, INPUT);
+  busDir(0xff, INPUT);
 
   #if defined (ILI9341_DRIVER)  || defined(ILI9341_2_DRIVER) || defined (ILI9488_DRIVER) // Read 3 bytes
     // Dummy read to throw away don't care value
@@ -1266,7 +1266,7 @@ void TFT_eSPI::readRect(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t *da
   CS_H;
 
   // Set masked pins D0- D7 to output
-  busDir(GPIO_DIR_MASK, OUTPUT);
+  busDir(0xff, OUTPUT);
 
 #else // SPI interface
 

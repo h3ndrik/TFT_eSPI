@@ -96,21 +96,10 @@ uint8_t TFT_eSPI::readByte(void)
 
 #if defined (TFT_PARALLEL_8_BIT)
   RD_L;
-  uint32_t reg;           // Read all GPIO pins 0-31
-  reg = gpio_input_get(); // Read three times to allow for bus access time
-  reg = gpio_input_get();
-  reg = gpio_input_get(); // Data should be stable now
+  b = dedic_gpio_bundle_read_in(bundleA); // Read three times to allow for bus access time
+  b = dedic_gpio_bundle_read_in(bundleA);
+  b = dedic_gpio_bundle_read_in(bundleA); // Data should be stable now
   RD_H;
-
-  // Check GPIO bits used and build value
-  b  = (((reg>>TFT_D0)&1) << 0);
-  b |= (((reg>>TFT_D1)&1) << 1);
-  b |= (((reg>>TFT_D2)&1) << 2);
-  b |= (((reg>>TFT_D3)&1) << 3);
-  b |= (((reg>>TFT_D4)&1) << 4);
-  b |= (((reg>>TFT_D5)&1) << 5);
-  b |= (((reg>>TFT_D6)&1) << 6);
-  b |= (((reg>>TFT_D7)&1) << 7);
 #endif
 
   return b;
@@ -126,15 +115,24 @@ uint8_t TFT_eSPI::readByte(void)
 ***************************************************************************************/
 void TFT_eSPI::busDir(uint32_t mask, uint8_t mode)
 {
+  const int bundleA_gpios[] = {TFT_D0, TFT_D1, TFT_D2, TFT_D3, TFT_D4, TFT_D5, TFT_D6, TFT_D7};               \
+  gpio_config_t io_conf = {                             \
+    .mode = (mode==INPUT)?GPIO_MODE_INPUT:GPIO_MODE_INPUT_OUTPUT,                            \
+  };                                                      \
+  for (int i = 0; i < sizeof(bundleA_gpios) / sizeof(bundleA_gpios[0]); i++) {                            \
+    io_conf.pin_bit_mask = 1ULL << bundleA_gpios[i];                            \
+    gpio_config(&io_conf);                            \
+  }
+
   // Arduino generic native function
-  pinMode(TFT_D0, mode);
-  pinMode(TFT_D1, mode);
-  pinMode(TFT_D2, mode);
-  pinMode(TFT_D3, mode);
-  pinMode(TFT_D4, mode);
-  pinMode(TFT_D5, mode);
-  pinMode(TFT_D6, mode);
-  pinMode(TFT_D7, mode);
+  //pinMode(TFT_D0, mode);
+  //pinMode(TFT_D1, mode);
+  //pinMode(TFT_D2, mode);
+  //pinMode(TFT_D3, mode);
+  //pinMode(TFT_D4, mode);
+  //pinMode(TFT_D5, mode);
+  //pinMode(TFT_D6, mode);
+  //pinMode(TFT_D7, mode);
 }
 
 /***************************************************************************************
